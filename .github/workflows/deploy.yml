@@ -1,0 +1,27 @@
+name: Deploy Flutter Web
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          
+      - name: Build Web
+        run: |
+          cd flutter/flutter_application_1
+          flutter build web --base-href "/MobileDev/"
+          
+      - name: Deploy to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: flutter/flutter_application_1/build/web
+          branch: gh-pages
