@@ -1,30 +1,47 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:flutter_application_1/main.dart';
+import 'package:flutter_application_1/main.dart' as app;
+import 'package:flutter_application_1/firebase_options.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('Firebase is optional without configuration', () {
+    expect(DefaultFirebaseOptions.currentPlatform, isNull);
+  });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  testWidgets('Menu works without cloud credentials', (tester) async {
+    await tester.pumpWidget(const app.MyApp());
+    expect(find.text('MobileDev — главное меню'), findsOneWidget);
+    expect(find.textContaining('Подключите свои Supabase'), findsOneWidget);
+    for (final label in ['Supabase', 'Firebase']) {
+      final button = tester.widget<ElevatedButton>(
+        find.widgetWithText(ElevatedButton, label),
+      );
+      expect(button.onPressed, isNull);
+    }
+    expect(tester.takeException(), isNull);
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+  testWidgets('Entrypoint runs without cloud credentials', (tester) async {
+    await app.main();
+    await tester.pumpAndSettle();
+    expect(find.text('MobileDev — главное меню'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('Unconfigured backend routes show setup instead of crashing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const app.MyApp());
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    navigator.pushNamed('/supabase/auth');
+    await tester.pumpAndSettle();
+    expect(find.text('Настройка подключения'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    navigator.pushNamed('/firebase');
+    await tester.pumpAndSettle();
+    expect(find.text('Настройка подключения'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }

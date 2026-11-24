@@ -3,29 +3,22 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 class AddMenu extends StatefulWidget {
-  final FutureOr<void> Function(String? username, String? passwd) insert;
-  const AddMenu({
-    super.key,
-    required this.insert,
-  });
-
+  final FutureOr<bool> Function(String? username, String? passwd) insert;
+  const AddMenu({super.key, required this.insert});
 
   @override
-  State<StatefulWidget> createState()
-    => AddMenuState();
-
+  State<StatefulWidget> createState() => AddMenuState();
 }
 
-class AddMenuState extends State<AddMenu>
-{
+class AddMenuState extends State<AddMenu> {
   final _usernameCont = TextEditingController();
   final _passwordCont = TextEditingController();
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
 
   Future<void> _submit() async {
-    await widget.insert(_usernameCont.text, _passwordCont.text);
-    if (!mounted) return;
+    final saved = await widget.insert(_usernameCont.text, _passwordCont.text);
+    if (!mounted || !saved) return;
     _usernameCont.clear();
     _passwordCont.clear();
   }

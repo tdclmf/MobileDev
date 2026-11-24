@@ -3,7 +3,7 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/AdditionalComponents/AddMenu.dart';
+import 'package:flutter_application_1/AdditionalComponents/add_menu.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class SupabasePage extends StatefulWidget {
@@ -81,6 +81,7 @@ class _SupabasePageState extends State<SupabasePage> {
     _realtimeSubscription = _supabase
         .from('Users')
         .stream(primaryKey: ['id'])
+        .eq('owner_id', _supabase.auth.currentUser!.id)
         .listen(
           (users) => _usersController.add(users),
           onError: (Object error) {
@@ -113,11 +114,11 @@ class _SupabasePageState extends State<SupabasePage> {
     }
   }
 
-  Future<void> _insertIntoTable(String? username, String? passwd) async {
+  Future<bool> _insertIntoTable(String? username, String? passwd) async {
     final trimmedUsername = username?.trim() ?? '';
     final password = passwd ?? '';
     if (trimmedUsername.isEmpty || password.trim().isEmpty || _isSaving) {
-      return;
+      return false;
     }
 
     setState(() {
@@ -125,20 +126,22 @@ class _SupabasePageState extends State<SupabasePage> {
       _serverError = null;
     });
     try {
+      // shortcut: SHA-256 is for demo records; use server-side Argon2/bcrypt for real passwords.
       final passwordHash = sha256.convert(utf8.encode(password)).toString();
       await _supabase.from('Users').insert({
+        'owner_id': _supabase.auth.currentUser!.id,
         'username': trimmedUsername,
         'password': passwordHash,
       });
-      if (!mounted) return;
-      if (!_isRealtimeEnabled) {
+      if (mounted && !_isRealtimeEnabled) {
         await fetchData();
       }
+      return true;
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _serverError = error.toString();
-      });
+      if (mounted) {
+        setState(() => _serverError = error.toString());
+      }
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -153,18 +156,21 @@ class _SupabasePageState extends State<SupabasePage> {
     _realtimeSubscription?.cancel();
     _usersControllerSubscription?.cancel();
     _usersController.close();
+    _scrollbarController.dispose();
     super.dispose();
   }
 
-  void logout()
-  {
-     Supabase.instance.client.auth.signOut();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          Navigator.pushReplacementNamed(context, '/supabase/auth');
-        }
-      });
-      return;
+  Future<void> logout() async {
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/supabase/auth');
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _serverError = 'Не удалось выйти. Попробуйте ещё раз.');
+      }
+    }
   }
 
   @override
@@ -177,26 +183,29 @@ class _SupabasePageState extends State<SupabasePage> {
         title: Row(
           spacing: 40,
           children: [
-          Text(username ?? 'Error user', style: TextStyle(fontSize: 15),),
-          IconButton(onPressed: logout, icon: Icon(Icons.logout))],
+            Text(username ?? 'Error user', style: TextStyle(fontSize: 15)),
+            IconButton(onPressed: logout, icon: Icon(Icons.logout)),
+          ],
         ),
       ),
-      body: SingleChildScrollView(child: Container(margin: EdgeInsets.all(10),
+      body: SingleChildScrollView(
+        child: Container(
+          margin: EdgeInsets.all(10),
           padding: EdgeInsets.all(10),
-        child: SizedBox(
-          width: 500,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Users',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          child: SizedBox(
+            width: 500,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Users',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
                 ),
-              ),
-               Container(
+                Container(
                   width: double.infinity,
                   height: 300,
                   margin: const EdgeInsets.only(top: 8, bottom: 20),
@@ -214,6 +223,7 @@ class _SupabasePageState extends State<SupabasePage> {
                           thumbVisibility: true,
                           controller: _scrollbarController,
                           child: ListView.builder(
+                            controller: _scrollbarController,
                             itemCount: _users.length,
                             itemBuilder: (context, index) {
                               return ListTile(
@@ -227,37 +237,40 @@ class _SupabasePageState extends State<SupabasePage> {
                           ),
                         ),
                 ),
-              
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Checkbox(
-                    value: _isRealtimeEnabled,
-                    onChanged: toggleRealtime,
-                  ),
-                  const Text('Realtime'),
-                  const SizedBox(width: 24),
-                  ElevatedButton(
-                    onPressed: _isRealtimeEnabled || _isLoading
-                        ? null
-                        : fetchData,
-                    child: const Text('Fetch'),
-                  ),
-                ],
-              ),
-              AddMenu(insert: _insertIntoTable),
-              if (_serverError != null)
-                Text(
-                  _serverError!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                  textAlign: TextAlign.center,
+
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Checkbox(
+                      value: _isRealtimeEnabled,
+                      onChanged: toggleRealtime,
+                    ),
+                    const Text('Realtime'),
+                    const SizedBox(width: 24),
+                    ElevatedButton(
+                      onPressed: _isRealtimeEnabled || _isLoading
+                          ? null
+                          : fetchData,
+                      child: const Text('Fetch'),
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 20),
-            ],
+                AddMenu(insert: _insertIntoTable),
+                if (_serverError != null)
+                  Text(
+                    _serverError!,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                const SizedBox(height: 20),
+              ],
+            ),
           ),
         ),
       ),
-    ));
+    );
   }
 }

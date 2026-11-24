@@ -6,7 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/AdditionalComponents/AddMenu.dart';
+import 'package:flutter_application_1/AdditionalComponents/add_menu.dart';
 
 class FirebasePage extends StatefulWidget {
   const FirebasePage({super.key});
@@ -30,8 +30,8 @@ class _FirebasePageState extends State<FirebasePage> {
 
   DatabaseReference get _usersRef => FirebaseDatabase.instanceFor(
     app: Firebase.app(),
-    databaseURL: 'https://flutter-test-proj-8af95-default-rtdb.europe-west1.firebasedatabase.app',
-  ).ref('users');
+    databaseURL: Firebase.app().options.databaseURL,
+  ).ref('users/${FirebaseAuth.instance.currentUser!.uid}');
 
   @override
   void initState() {
@@ -110,11 +110,11 @@ class _FirebasePageState extends State<FirebasePage> {
     }
   }
 
-  Future<void> _insertIntoTable(String? username, String? passwd) async {
+  Future<bool> _insertIntoTable(String? username, String? passwd) async {
     final trimmedUsername = username?.trim() ?? '';
     final password = passwd ?? '';
     if (trimmedUsername.isEmpty || password.trim().isEmpty || _isSaving) {
-      return;
+      return false;
     }
 
     setState(() {
@@ -122,6 +122,7 @@ class _FirebasePageState extends State<FirebasePage> {
       _serverError = null;
     });
     try {
+      // shortcut: SHA-256 is for demo records; use server-side Argon2/bcrypt for real passwords.
       final passwordHash = sha256.convert(utf8.encode(password)).toString();
       await _usersRef.push().set({
         'username': trimmedUsername,
@@ -130,11 +131,12 @@ class _FirebasePageState extends State<FirebasePage> {
       if (mounted && !_isRealtimeEnabled) {
         await fetchData();
       }
+      return true;
     } on FirebaseException catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _serverError = error.message ?? error.toString();
-      });
+      if (mounted) {
+        setState(() => _serverError = error.message ?? error.toString());
+      }
+      return false;
     } finally {
       if (mounted) {
         setState(() {
@@ -152,14 +154,17 @@ class _FirebasePageState extends State<FirebasePage> {
     super.dispose();
   }
 
-  void logout() {
-    FirebaseAuth.instance.signOut();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+  Future<void> logout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.pushReplacementNamed(context, '/firebase/auth');
       }
-    });
-    return;
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        setState(() => _serverError = error.message ?? error.code);
+      }
+    }
   }
 
   @override
@@ -170,8 +175,13 @@ class _FirebasePageState extends State<FirebasePage> {
         title: Row(
           spacing: 40,
           children: [
-          Text(username ?? 'Error user', style: TextStyle(fontSize: 15), textAlign: TextAlign.center),
-          IconButton(onPressed: logout, icon: Icon(Icons.logout))],
+            Text(
+              username ?? 'Error user',
+              style: TextStyle(fontSize: 15),
+              textAlign: TextAlign.center,
+            ),
+            IconButton(onPressed: logout, icon: Icon(Icons.logout)),
+          ],
         ),
       ),
       body: SingleChildScrollView(

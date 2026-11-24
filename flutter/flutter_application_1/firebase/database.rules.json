@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "$record": {
+          ".validate": "newData.hasChildren(['username', 'password'])",
+          "username": {
+            ".validate": "newData.isString() && newData.val().length > 0"
+          },
+          "password": {
+            ".validate": "newData.isString() && newData.val().matches(/^[0-9a-f]{64}$/)"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      }
+    }
+  }
+}

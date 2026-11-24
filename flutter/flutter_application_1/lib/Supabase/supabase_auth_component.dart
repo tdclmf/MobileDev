@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_application_1/AdditionalComponents/AuthIcons.dart';
+import 'package:flutter_application_1/AdditionalComponents/auth_icons.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -18,15 +18,16 @@ class _SupabaseAuthState extends State<SupabaseAuthPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-
   bool _isLoading = false;
   bool _isRegistering = false;
   bool _obscurePassword = true;
 
   GoTrueClient get supabaseAuth => Supabase.instance.client.auth;
+  StreamSubscription<AuthState>? _authSubscription;
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -55,9 +56,10 @@ class _SupabaseAuthState extends State<SupabaseAuthPage> {
         );
         return;
       }
-      Navigator.pushReplacementNamed(context, '/supabase');
     } on AuthException catch (error) {
       _showError(error.message);
+    } catch (_) {
+      _showError('Не удалось войти. Проверьте подключение к сети.');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -69,69 +71,39 @@ class _SupabaseAuthState extends State<SupabaseAuthPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  bool isLoggedIn() {
-    final session = Supabase.instance.client.auth.currentSession;
-    return session == null || session.isExpired;
-  }
-
-  var redirectTo = "";
   @override
   void initState() {
-    if (kIsWeb) {
-      redirectTo = "https://simobistudy.github.io/RMP-Flutter/#/supabase";
-    } else if (Platform.isAndroid) {
-      redirectTo = "flutter-test-app://login-callback";
-  }
     super.initState();
+    _authSubscription = supabaseAuth.onAuthStateChange.listen((state) {
+      if (mounted &&
+          state.event == AuthChangeEvent.signedIn &&
+          state.session != null) {
+        Navigator.pushReplacementNamed(context, '/supabase');
+      }
+    });
   }
 
-  void loginFromGoogle() {
-    supabaseAuth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: redirectTo
-    );
-
-    if (isLoggedIn()) {
-      Navigator.pushReplacementNamed(context, "/supabase");
-    }
-  }
-
-  void loginFromGithub() {
-    supabaseAuth.signInWithOAuth(
-      OAuthProvider.github,
-      redirectTo: redirectTo,
-    );
-    if (isLoggedIn()) {
-      Navigator.pushReplacementNamed(context, "/supabase");
-    }
-  }
-
-  void loginFromApple() {
-    supabaseAuth.signInWithOAuth(
-      OAuthProvider.apple,
-      redirectTo: redirectTo,
-    );
-
-    if (isLoggedIn()) {
-      Navigator.pushReplacementNamed(context, "/supabase");
-    }
-  }
-
-  void loginFromYandex() {
-    supabaseAuth.signInWithOAuth(
-      OAuthProvider('custom:yandex'),
-      redirectTo: redirectTo,
-    );
-
-    if (isLoggedIn()) {
-      Navigator.pushReplacementNamed(context, "/supabase");
+  Future<void> _signInWithOAuth(OAuthProvider provider) async {
+    try {
+      await supabaseAuth.signInWithOAuth(
+        provider,
+        redirectTo: kIsWeb
+            ? Uri.base.replace(query: '', fragment: '').toString()
+            : 'mobiledev://login-callback',
+      );
+    } on AuthException catch (error) {
+      _showError(error.message);
+    } catch (_) {
+      _showError(
+        'Не удалось открыть страницу входа. Проверьте провайдера и сеть.',
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Supabase auth"),),
+      appBar: AppBar(title: Text("Supabase auth")),
       body: Center(
         child: Container(
           margin: EdgeInsets.all(10),
@@ -236,15 +208,16 @@ class _SupabaseAuthState extends State<SupabaseAuthPage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       AuthIcon(
-                        onPressed: loginFromGoogle,
+                        onPressed: () => _signInWithOAuth(OAuthProvider.google),
                         icon: FaIcon(FontAwesomeIcons.google, fill: 0.2),
                       ),
                       AuthIcon(
-                        onPressed: loginFromGithub,
+                        onPressed: () => _signInWithOAuth(OAuthProvider.github),
                         icon: FaIcon(FontAwesomeIcons.github, fill: 0.2),
                       ),
                       AuthIcon(
-                        onPressed: loginFromYandex,
+                        onPressed: () =>
+                            _signInWithOAuth(OAuthProvider('custom:yandex')),
                         icon: FaIcon(FontAwesomeIcons.yandex, fill: 0.2),
                       ),
                     ],
